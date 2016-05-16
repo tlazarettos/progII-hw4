@@ -29,7 +29,7 @@ int main(int argc, char *argv[])
 
 	if(argc!=3)
 	{
-		fprintf(stderr, "%s: Expected format (./chat username user_to_communicate) (Error in line: %d)\n", __FILE__, __LINE__);
+		printf("Expected format: ./chat username user_to_communicate\n");
 		return(-1);
 	}
 
@@ -71,7 +71,7 @@ int main(int argc, char *argv[])
 
 		flag=attach;
 		*flag=0;
-		
+
 		name1=flag+1;
 
 		msg=name1+NAME_SIZE;
@@ -96,10 +96,10 @@ int main(int argc, char *argv[])
 		{
 			if(strcmp(argv[1],name1)==0)
 			{
-				printf("You already have a chat opened with %s\n", name2);
+				printf("You already have a chat open with %s\n", name2);
 				return(-1);
 			}
-			printf("You already have a chat opened with %s\n", name1);
+			printf("You already have a chat open with %s\n", name1);
 			return(-1);
 		}
 
