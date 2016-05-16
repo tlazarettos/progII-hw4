@@ -4,7 +4,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <errno.h>
-#include "chatf.h"
+
 
 #define MSG_SIZE 64
 #define NAME_SIZE 20
@@ -25,8 +25,7 @@ int main(int argc, char *argv[])
 	pid_t pid;
 	struct shmid_ds buf;
 	int rv;
-	int *flag1, *flag2, *attach;
-	char *name1, *msg1, *name2, *msg2;
+	char *name1, *name2, *msg, *flag, *attach;
 
 	if(argc!=3)
 	{
@@ -38,62 +37,93 @@ int main(int argc, char *argv[])
 	failcheck(key, __LINE__-1);
 
 	shmid=shmget(key, 2*(MSG_SIZE+NAME_SIZE+1), IPC_CREAT|IPC_EXCL|0666);
-	if(errno!=EEXIST)
+	if((errno!=EEXIST)&&(shmid<0))
 		failcheck(shmid, __LINE__-2);
-	else if(shmid>0)
-	{
-		attach=(int *)shmat(shmid,NULL,0);
-		failcheck(*attach, __LINE__-1);
 
-		flag1=attach;
-		*flag1=0;
-
-		name1=attach+1;
-		strcpy(name1, argv[1]);
-
-		msg1=name1+NAME_SIZE;
-
-		flag2=msg1+MSG_SIZE;
-		*flag2=0;
-
-		name2=flag2+1;
-		strcpy(name2, argv[2]);
-
-		msg2=name2+NAME_SIZE;
-	}
-	else
+	if(errno==EEXIST)
 	{
 		shmid=shmget(key, 0, 0);
 		failcheck(shmid, __LINE__-1);
+	}
 
-		attach=(int *)shmat(shmid,NULL,0);
-		failcheck(*attach, __LINE__-1);
+	attach=(char *)shmat(shmid,NULL,0);
+	failcheck(*attach, __LINE__-1);
 
-		if(strcmp(name1, argv[1])==0)
+	if((shmid>0)&&(errno!=EEXIST))
+	{
+		//printf("Hi1\n");
+
+		flag=attach;
+		*flag=0;
+
+		name1=flag+1;
+		strcpy(name1, argv[1]);
+
+		msg=name1+NAME_SIZE;
+
+		name2=msg+MSG_SIZE+1;
+		strcpy(name2, argv[2]);
+
+	}
+	else
+	{
+		//printf("Hi2\n");
+
+		flag=attach;
+		*flag=0;
+		
+		name1=flag+1;
+
+		msg=name1+NAME_SIZE;
+
+		name2=msg+MSG_SIZE+1;
+
+		if(strcmp(name2, argv[1])==0)
 		{
-			
+			printf("Hi2\n");
+			flag=msg+MSG_SIZE;
+			*flag=0;
+
+			msg=name2+NAME_SIZE;
+		}
+		else if(strcmp(name1, argv[1])!=0)
+		{
+			printf("%s is currently chatting with someone else\n", argv[2]);
+			return(-1);
+		}
+
+		if(strcmp(argv[2],name1)!=0 && strcmp(argv[2],name2)!=0)
+		{
+			if(strcmp(argv[1],name1)==0)
+			{
+				printf("You already have a chat opened with %s\n", name2);
+				return(-1);
+			}
+			printf("You already have a chat opened with %s\n", name1);
+			return(-1);
 		}
 
 
 	}
 
-	pid=fork();
-	failcheck(pid, __LINE__-1);
+// 	pid=fork();
+// 	failcheck(pid, __LINE__-1);
+//
+// 	if(pid==0)
+// 	{
+//
+// 		rv=shmctl(shmid, IPC_STAT, &buf);
+// 		failcheck(rv, __LINE__-1);
+// 		do
+// 		{
+// 			if(buf.shm_nattch==2)
+// 			{
+// 				fprintf(
+// 			}
+// 		}while(buf.shm_nattch!=2);
+// 	}
 
-	if(pid==0)
-	{
-
-		rv=shmctl(shmid, IPC_STAT, &buf);
-		failcheck(rv, __LINE__-1);
-		do
-		{
-			if(buf.shm_nattch==2)
-			{
-				fprintf(
-			}
-		}while(buf.shm_nattch!=2);
-	}
-
+	getchar();
 
 	return 0;
 }
