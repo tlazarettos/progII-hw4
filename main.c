@@ -4,7 +4,7 @@
 #include <sys/ipc.h>
 #include <sys/shm.h>
 #include <errno.h>
-
+#include <unistd.h>
 
 #define MSG_SIZE 64
 #define NAME_SIZE 20
@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
 	pid_t pid;
 	struct shmid_ds buf;
 	int rv;
-	char *name1, *name2, *msg, *flag, *attach;
+	char *name1, *name2, *msg_Re, *msg_Wr, *flag_Re, *flag_Wr, *attach;
 
 	if(argc!=3)
 	{
@@ -53,38 +53,56 @@ int main(int argc, char *argv[])
 	{
 		//printf("Hi1\n");
 
-		flag=attach;
-		*flag=0;
+		flag_Wr=attach;
+		*flag_Wr='0';
 
-		name1=flag+1;
+		name1=flag_Wr+1;
 		strcpy(name1, argv[1]);
 
-		msg=name1+NAME_SIZE;
-
-		name2=msg+MSG_SIZE+1;
+		msg_Wr=name1+NAME_SIZE;
+		
+		/*********************/
+		
+		flag_Re=msg_Wr+MSG_SIZE;
+		*flag_Re='0';
+		
+		name2=msg_Wr+MSG_SIZE+1;
 		strcpy(name2, argv[2]);
-
+		
+		msg_Re=name2+NAME_SIZE;
 	}
 	else
 	{
 		//printf("Hi2\n");
 
-		flag=attach;
-		*flag=0;
+		flag_Wr=attach;
 
-		name1=flag+1;
+		name1=flag_Wr+1;
 
-		msg=name1+NAME_SIZE;
+		msg_Wr=name1+NAME_SIZE;
+		
+		/*********************/
 
-		name2=msg+MSG_SIZE+1;
+		flag_Re=msg_Wr+MSG_SIZE;
+
+		name2=msg_Wr+MSG_SIZE+1;
+		
+		msg_Re=name2+NAME_SIZE;
 
 		if(strcmp(name2, argv[1])==0)
 		{
+			
 			printf("Hi2\n");
-			flag=msg+MSG_SIZE;
-			*flag=0;
+			
+			flag_Wr=msg_Wr+MSG_SIZE;
 
-			msg=name2+NAME_SIZE;
+			msg_Wr=name2+NAME_SIZE;
+			
+			/*********************/
+		
+			flag_Re=attach;
+			
+			msg_Re=name1+NAME_SIZE;
 		}
 		else if(strcmp(name1, argv[1])!=0)
 		{
@@ -102,26 +120,38 @@ int main(int argc, char *argv[])
 			printf("You already have a chat open with %s\n", name1);
 			return(-1);
 		}
-
-
 	}
 
-// 	pid=fork();
-// 	failcheck(pid, __LINE__-1);
-//
-// 	if(pid==0)
-// 	{
-//
-// 		rv=shmctl(shmid, IPC_STAT, &buf);
-// 		failcheck(rv, __LINE__-1);
-// 		do
-// 		{
-// 			if(buf.shm_nattch==2)
-// 			{
-// 				fprintf(
-// 			}
-// 		}while(buf.shm_nattch!=2);
-// 	}
+	pid=fork();
+	failcheck(pid, __LINE__-1);
+
+	if(pid==0)
+	{
+		rv=shmctl(shmid, IPC_STAT, &buf);
+		failcheck(rv, __LINE__-1);
+		
+		while(buf.shm_nattch!=2)
+		{
+			;
+		}
+		
+		while(*flag_Re=='0')
+		{
+			if(*flag_Re=='1')
+			{
+				if(strcmp(name1, argv[1])==0)
+					printf("%s: %s", name2, msg_Re);
+				else
+					printf("%s: %s", name1, msg_Re);
+				
+				*flag_Re='0';	
+			}
+		}
+		
+		printf("Hi3\n");
+		
+		_exit(0);
+	}
 
 	getchar();
 
