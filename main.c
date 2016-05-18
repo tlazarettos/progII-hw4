@@ -25,7 +25,7 @@ int main(int argc, char *argv[])
 	pid_t pid;
 	struct shmid_ds buf;
 	int rv;
-	char *name1, *name2, *msg_Re, *msg_Wr, *flag_Re, *flag_Wr, *attach;
+	char *name1, *name2, *msg_re, *msg_wr, *flag_re, *flag_wr, *attach;
 
 	if(argc!=3)
 	{
@@ -51,58 +51,46 @@ int main(int argc, char *argv[])
 
 	if((shmid>0)&&(errno!=EEXIST))
 	{
-		//printf("Hi1\n");
 
-		flag_Wr=attach;
-		*flag_Wr='0';
+		flag_wr=attach;
+		*flag_wr=0;
 
-		name1=flag_Wr+1;
+		name1=flag_wr+1;
 		strcpy(name1, argv[1]);
 
-		msg_Wr=name1+NAME_SIZE;
-		
+		msg_wr=name1+NAME_SIZE;
+
 		/*********************/
-		
-		flag_Re=msg_Wr+MSG_SIZE;
-		*flag_Re='0';
-		
-		name2=msg_Wr+MSG_SIZE+1;
+
+		flag_re=msg_wr+MSG_SIZE;
+		*flag_re=0;
+
+		name2=msg_wr+MSG_SIZE+1;
 		strcpy(name2, argv[2]);
-		
-		msg_Re=name2+NAME_SIZE;
+
+		msg_re=name2+NAME_SIZE;
 	}
 	else
 	{
-		//printf("Hi2\n");
+		flag_wr=attach;
+		name1=flag_wr+1;
+		msg_wr=name1+NAME_SIZE;
 
-		flag_Wr=attach;
-
-		name1=flag_Wr+1;
-
-		msg_Wr=name1+NAME_SIZE;
-		
 		/*********************/
 
-		flag_Re=msg_Wr+MSG_SIZE;
-
-		name2=msg_Wr+MSG_SIZE+1;
-		
-		msg_Re=name2+NAME_SIZE;
+		flag_re=msg_wr+MSG_SIZE;
+		name2=msg_wr+MSG_SIZE+1;
+		msg_re=name2+NAME_SIZE;
 
 		if(strcmp(name2, argv[1])==0)
 		{
-			
-			printf("Hi2\n");
-			
-			flag_Wr=msg_Wr+MSG_SIZE;
+			flag_wr=msg_wr+MSG_SIZE;
+			msg_wr=name2+NAME_SIZE;
 
-			msg_Wr=name2+NAME_SIZE;
-			
 			/*********************/
-		
-			flag_Re=attach;
-			
-			msg_Re=name1+NAME_SIZE;
+
+			flag_re=attach;
+			msg_re=name1+NAME_SIZE;
 		}
 		else if(strcmp(name1, argv[1])!=0)
 		{
@@ -129,31 +117,36 @@ int main(int argc, char *argv[])
 	{
 		rv=shmctl(shmid, IPC_STAT, &buf);
 		failcheck(rv, __LINE__-1);
-		
-		while(buf.shm_nattch!=2)
+
+		// while(buf.shm_nattch!=3)
+		// {
+		// 	;
+		// }
+
+		do
 		{
-			;
-		}
-		
-		while(*flag_Re=='0')
-		{
-			if(*flag_Re=='1')
+			if(*flag_re==1)
 			{
 				if(strcmp(name1, argv[1])==0)
-					printf("%s: %s", name2, msg_Re);
+					printf("%s: %s", name2, msg_re);
 				else
-					printf("%s: %s", name1, msg_Re);
-				
-				*flag_Re='0';	
+					printf("%s: %s", name1, msg_re);
+				*flag_re=0;
 			}
-		}
-		
-		printf("Hi3\n");
-		
+		}while(1);
+
 		_exit(0);
 	}
 
-	getchar();
+	do
+	{
+		if(*flag_wr==0)
+		{
+			fgets(msg_wr, MSG_SIZE, stdin);
+			*flag_wr=1;
+		}
+
+	}while(1);
 
 	return 0;
 }
