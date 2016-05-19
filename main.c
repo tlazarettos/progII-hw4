@@ -9,6 +9,7 @@
 #include <signal.h>
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
 
 #define MSG_SIZE 64
 #define NAME_SIZE 20
@@ -17,6 +18,8 @@ void failcheck(int rv, int line)
 {
 	if(rv<0)
 	{
+		if(errno==EEXIST)
+			return;
 		fprintf(stderr,"%s: %s (Error in line: %d)\n", __FILE__, strerror(errno) , line);
 		exit(-1);
 	}
@@ -25,7 +28,7 @@ void failcheck(int rv, int line)
 int main(int argc, char *argv[])
 {
 	key_t key;
-	int shmid;
+	int shmid, fd, temp;
 	pid_t pid;
 	//struct shmid_ds buf;
 	int rv;
@@ -55,6 +58,9 @@ int main(int argc, char *argv[])
 
 	if((shmid>0)&&(errno!=EEXIST))
 	{
+		
+// 		rv=mkfifo("pipe1", 0666);
+// 		failcheck(rv, __LINE__-1);
 
 		flag_wr=attach;
 		*flag_wr=0;
@@ -88,6 +94,9 @@ int main(int argc, char *argv[])
 
 		if(strcmp(name2, argv[1])==0)
 		{
+// 			rv=mkfifo("pipe2", 0666);
+// 			failcheck(rv, __LINE__-1);
+
 			flag_wr=msg_wr+MSG_SIZE;
 			msg_wr=name2+NAME_SIZE;
 
@@ -113,48 +122,73 @@ int main(int argc, char *argv[])
 			return(-1);
 		}
 	}
+	
+	rv=mkfifo("pipe1", 0666);
+	failcheck(rv, __LINE__-1);
+	
+	rv=mkfifo("pipe2", 0666);
+	failcheck(rv, __LINE__-1);
 
 	pid=fork();
 	failcheck(pid, __LINE__-1);
 
 	if(pid==0)
 	{
+		if(strcmp(argv[1], name2)==0)
+		{
+			fd=open("pipe1", O_RDONLY);
+			failcheck(fd, __LINE__-1);
+		}
+		else if(strcmp(argv[1], name1)==0)
+		{
+			fd=open("pipe2", O_RDONLY);
+			failcheck(fd, __LINE__-1);
+		}
+		
 		do
 		{
-			if(*flag_re==1)
-			{
-				if(strcmp(name1, argv[1])==0)
-					printf("%s: %s", name2, msg_re);
-				else
-					printf("%s: %s", name1, msg_re);
-				*flag_re=0;
-			}
+			rv=read(fd, &temp, sizeof(int));
+			failcheck(rv, __LINE__-1);
+			
+			if(strcmp(name1, argv[1])==0)
+				printf("%s: %s", name2, msg_re);
+			else
+				printf("%s: %s", name1, msg_re);
 		}while(1);
 
 		_exit(0);
 	}
+	
+	if(strcmp(argv[1], name1)==0)
+	{
+		fd=open("pipe1", O_WRONLY);
+		failcheck(fd, __LINE__-1);
+	}
+	else if(strcmp(argv[1], name2)==0)
+	{
+		fd=open("pipe2", O_WRONLY);
+		failcheck(fd, __LINE__-1);
+	}
 
 	do
-	{
-		if(*flag_wr==0)
+	{	
+		fgets(msg_wr, MSG_SIZE, stdin);
+		if(strcmp(msg_wr, "quit\n")==0)
 		{
-			fgets(msg_wr, MSG_SIZE, stdin);
-			if(strcmp(msg_wr, "quit\n")==0)
-			{
-				rv=kill(pid, SIGTERM);
-				failcheck(rv, __LINE__-1);
+			rv=kill(pid, SIGTERM);
+			failcheck(rv, __LINE__-1);
 				
-				rv=waitpid(-1, NULL, 0);
-				failcheck(rv, __LINE__-1);
+			rv=waitpid(-1, NULL, 0);
+			failcheck(rv, __LINE__-1);
 				
-				rv=shmctl(shmid,  IPC_RMID, NULL);
-				failcheck(rv, __LINE__-1);
+			rv=shmctl(shmid,  IPC_RMID, NULL);
+			failcheck(rv, __LINE__-1);
 
-				break;
-			}
-			*flag_wr=1;
+			break;
 		}
-
+		temp=1;
+		rv=write(fd, &temp, sizeof(int));
+		failcheck(rv, __LINE__-1);
 	}while(1);
 	
 	return 0;
