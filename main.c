@@ -3,6 +3,10 @@
 #include <string.h>
 #include <sys/ipc.h>
 #include <sys/shm.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <sys/stat.h> /**/
+#include <signal.h>
 #include <errno.h>
 #include <unistd.h>
 
@@ -23,7 +27,7 @@ int main(int argc, char *argv[])
 	key_t key;
 	int shmid;
 	pid_t pid;
-	struct shmid_ds buf;
+	//struct shmid_ds buf;
 	int rv;
 	char *name1, *name2, *msg_re, *msg_wr, *flag_re, *flag_wr, *attach;
 
@@ -115,14 +119,6 @@ int main(int argc, char *argv[])
 
 	if(pid==0)
 	{
-		rv=shmctl(shmid, IPC_STAT, &buf);
-		failcheck(rv, __LINE__-1);
-
-		// while(buf.shm_nattch!=3)
-		// {
-		// 	;
-		// }
-
 		do
 		{
 			if(*flag_re==1)
@@ -143,10 +139,23 @@ int main(int argc, char *argv[])
 		if(*flag_wr==0)
 		{
 			fgets(msg_wr, MSG_SIZE, stdin);
+			if(strcmp(msg_wr, "quit\n")==0)
+			{
+				rv=kill(pid, SIGTERM);
+				failcheck(rv, __LINE__-1);
+				
+				rv=waitpid(-1, NULL, 0);
+				failcheck(rv, __LINE__-1);
+				
+				rv=shmctl(shmid,  IPC_RMID, NULL);
+				failcheck(rv, __LINE__-1);
+
+				break;
+			}
 			*flag_wr=1;
 		}
 
 	}while(1);
-
+	
 	return 0;
 }
