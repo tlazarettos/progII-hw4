@@ -14,25 +14,36 @@
 #define MSG_SIZE 64
 #define NAME_SIZE 20
 
+volatile sig_atomic_t fd;
+
 void failcheck(int rv, int line)
 {
 	if(rv<0)
 	{
-		if(errno==EEXIST)
+		if((errno==EEXIST)||(errno==EPIPE))
 			return;
 		fprintf(stderr,"%s: %s (Error in line: %d)\n", __FILE__, strerror(errno) , line);
 		exit(-1);
 	}
 }
 
+// static void handler(int sig)
+// {
+// 	int rv;
+// 	rv=close(fd);
+// 	failcheck(rv, __LINE__-1);
+// }
+
 int main(int argc, char *argv[])
 {
 	key_t key;
-	int shmid, fd, temp;
+	int shmid, temp;
 	pid_t pid;
 	//struct shmid_ds buf;
 	int rv;
 	char *name1, *name2, *msg_re, *msg_wr, *flag_re, *flag_wr, *attach;
+	
+	signal(SIGPIPE, SIG_IGN);
 
 	if(argc!=3)
 	{
@@ -126,14 +137,22 @@ int main(int argc, char *argv[])
 	rv=mkfifo("pipe1", 0666);
 	failcheck(rv, __LINE__-1);
 	
+	printf("created pipe1\n");
 	rv=mkfifo("pipe2", 0666);
 	failcheck(rv, __LINE__-1);
-
+	printf("created pipe2\n");
+	
 	pid=fork();
 	failcheck(pid, __LINE__-1);
 
 	if(pid==0)
 	{
+// 		struct sigaction act={{0}};
+// 		act.sa_handler=handler;
+// 	
+// 		rv=sigaction(SIGUSR1, &act, NULL);
+// 		failcheck(rv, __LINE__-1);
+		
 		if(strcmp(argv[1], name2)==0)
 		{
 			fd=open("pipe1", O_RDONLY);
@@ -144,16 +163,37 @@ int main(int argc, char *argv[])
 			fd=open("pipe2", O_RDONLY);
 			failcheck(fd, __LINE__-1);
 		}
-		
+		printf("expecting to read\n");
 		do
 		{
 			rv=read(fd, &temp, sizeof(int));
 			failcheck(rv, __LINE__-1);
-			
-			if(strcmp(name1, argv[1])==0)
-				printf("%s: %s", name2, msg_re);
+			printf("read!!!!\n");
+
+			if(rv!=0)
+			{	
+				if(strcmp(name1, argv[1])==0)
+					printf("%s: %s", name2, msg_re);
+				else
+					printf("%s: %s", name1, msg_re);
+			}
 			else
-				printf("%s: %s", name1, msg_re);
+			{
+				rv=close(fd);
+				failcheck(rv, __LINE__-1);
+				printf("repopened\n");
+// 				if(strcmp(argv[1], name2)==0)
+// 				{
+// 					fd=open("pipe1", O_RDONLY);
+// 					failcheck(fd, __LINE__-1);
+// 				}
+// 				else if(strcmp(argv[1], name1)==0)
+// 				{
+// 					fd=open("pipe2", O_RDONLY);
+// 					failcheck(fd, __LINE__-1);
+// 				}
+// 				printf("repopned read\n");
+			}
 		}while(1);
 
 		_exit(0);
@@ -169,9 +209,10 @@ int main(int argc, char *argv[])
 		fd=open("pipe2", O_WRONLY);
 		failcheck(fd, __LINE__-1);
 	}
-
+	printf("expecting to write\n");
 	do
 	{	
+		
 		fgets(msg_wr, MSG_SIZE, stdin);
 		if(strcmp(msg_wr, "quit\n")==0)
 		{
@@ -183,12 +224,36 @@ int main(int argc, char *argv[])
 				
 			rv=shmctl(shmid,  IPC_RMID, NULL);
 			failcheck(rv, __LINE__-1);
+			
+			rv=close(fd);
+			failcheck(rv, __LINE__-1);
 
 			break;
 		}
-		temp=1;
-		rv=write(fd, &temp, sizeof(int));
-		failcheck(rv, __LINE__-1);
+		
+		if(errno==EPIPE)
+		{
+			rv=close(fd);
+			failcheck(rv, __LINE__-1);
+			
+			if(strcmp(argv[1], name1)==0)
+			{
+				fd=open("pipe1", O_WRONLY);
+				failcheck(fd, __LINE__-1);
+			}
+			else if(strcmp(argv[1], name2)==0)
+			{
+				fd=open("pipe2", O_WRONLY);
+				failcheck(fd, __LINE__-1);
+			}
+			errno=0;
+		}
+		else
+		{
+			temp=1;
+			rv=write(fd, &temp, sizeof(int));
+			failcheck(rv, __LINE__-1);
+		}
 	}while(1);
 	
 	return 0;
