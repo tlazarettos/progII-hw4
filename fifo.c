@@ -5,7 +5,7 @@
 #include <sys/shm.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/stat.h> /**/
+#include <sys/msg.h>
 #include <signal.h>
 #include <errno.h>
 #include <unistd.h>
@@ -13,37 +13,36 @@
 
 #define MSG_SIZE 64
 #define NAME_SIZE 20
+#define WRITE 2
+#define READ 1
 
-volatile sig_atomic_t fd;
+
+struct msg
+{
+	long mtype;
+	char mtext[15];
+};
 
 void failcheck(int rv, int line)
 {
 	if(rv<0)
 	{
-		if((errno==EEXIST)||(errno==EPIPE))
+		if(errno==EEXIST)
 			return;
 		fprintf(stderr,"%s: %s (Error in line: %d)\n", __FILE__, strerror(errno) , line);
 		exit(-1);
 	}
 }
 
-// static void handler(int sig)
-// {
-// 	int rv;
-// 	rv=close(fd);
-// 	failcheck(rv, __LINE__-1);
-// }
-
 int main(int argc, char *argv[])
 {
 	key_t key;
-	int shmid, temp;
+	int shmid, msgid1, msgid2;
 	pid_t pid;
-	//struct shmid_ds buf;
+	struct msg m;
+	struct shmid_ds buf;
 	int rv;
 	char *name1, *name2, *msg_re, *msg_wr, *flag_re, *flag_wr, *attach;
-	
-	signal(SIGPIPE, SIG_IGN);
 
 	if(argc!=3)
 	{
@@ -55,9 +54,9 @@ int main(int argc, char *argv[])
 	failcheck(key, __LINE__-1);
 
 	shmid=shmget(key, 2*(MSG_SIZE+NAME_SIZE+1), IPC_CREAT|IPC_EXCL|0666);
+	
 	if((errno!=EEXIST)&&(shmid<0))
 		failcheck(shmid, __LINE__-2);
-
 	if(errno==EEXIST)
 	{
 		shmid=shmget(key, 0, 0);
@@ -69,10 +68,6 @@ int main(int argc, char *argv[])
 
 	if((shmid>0)&&(errno!=EEXIST))
 	{
-		
-// 		rv=mkfifo("pipe1", 0666);
-// 		failcheck(rv, __LINE__-1);
-
 		flag_wr=attach;
 		*flag_wr=0;
 
@@ -105,9 +100,6 @@ int main(int argc, char *argv[])
 
 		if(strcmp(name2, argv[1])==0)
 		{
-// 			rv=mkfifo("pipe2", 0666);
-// 			failcheck(rv, __LINE__-1);
-
 			flag_wr=msg_wr+MSG_SIZE;
 			msg_wr=name2+NAME_SIZE;
 
@@ -134,126 +126,209 @@ int main(int argc, char *argv[])
 		}
 	}
 	
-	rv=mkfifo("pipe1", 0666);
-	failcheck(rv, __LINE__-1);
-	
-	printf("created pipe1\n");
-	rv=mkfifo("pipe2", 0666);
-	failcheck(rv, __LINE__-1);
-	printf("created pipe2\n");
-	
 	pid=fork();
 	failcheck(pid, __LINE__-1);
 
 	if(pid==0)
 	{
-// 		struct sigaction act={{0}};
-// 		act.sa_handler=handler;
-// 	
-// 		rv=sigaction(SIGUSR1, &act, NULL);
-// 		failcheck(rv, __LINE__-1);
+		errno=0;
 		
-		if(strcmp(argv[1], name2)==0)
-		{
-			fd=open("pipe1", O_RDONLY);
-			failcheck(fd, __LINE__-1);
+		if(strcmp(argv[1], name1)==0)
+		{	
+			msgid1=msgget(key, IPC_CREAT|IPC_EXCL|0666);
+	
+			if((errno!=EEXIST)&&(msgid1<0))
+				failcheck(msgid1, __LINE__-3);
+			if(errno==EEXIST)
+			{
+				msgid1=msgget(key, 0);
+				failcheck(msgid1, __LINE__-1);
+			}
 		}
-		else if(strcmp(argv[1], name1)==0)
+		else if(strcmp(argv[1], name2)==0)
 		{
-			fd=open("pipe2", O_RDONLY);
-			failcheck(fd, __LINE__-1);
+			msgid2=msgget(key, IPC_CREAT|IPC_EXCL|0666);
+	
+			if((errno!=EEXIST)&&(msgid2<0))
+				failcheck(msgid2, __LINE__-3);
+			if(errno==EEXIST)
+			{
+				msgid1=msgget(key, 0);
+				failcheck(msgid2, __LINE__-1);
+			}
 		}
-		printf("expecting to read\n");
+		
 		do
 		{
-			rv=read(fd, &temp, sizeof(int));
-			failcheck(rv, __LINE__-1);
-			printf("read!!!!\n");
-
-			if(rv!=0)
-			{	
-				if(strcmp(name1, argv[1])==0)
-					printf("%s: %s", name2, msg_re);
-				else
-					printf("%s: %s", name1, msg_re);
-			}
-			else
+			if(strcmp(argv[1], name1)==0)
 			{
-				rv=close(fd);
+				rv=msgrcv(msgid1, &m, sizeof(m.mtext), WRITE, 0);
 				failcheck(rv, __LINE__-1);
-				printf("repopened\n");
-// 				if(strcmp(argv[1], name2)==0)
-// 				{
-// 					fd=open("pipe1", O_RDONLY);
-// 					failcheck(fd, __LINE__-1);
-// 				}
-// 				else if(strcmp(argv[1], name1)==0)
-// 				{
-// 					fd=open("pipe2", O_RDONLY);
-// 					failcheck(fd, __LINE__-1);
-// 				}
-// 				printf("repopned read\n");
+				printf("//received WRITE: %s//\n",m.mtext);
+			
+			}
+			else if(strcmp(argv[1], name2)==0)
+			{
+				rv=msgrcv(msgid2, &m, sizeof(m.mtext), WRITE, 0);
+				failcheck(rv, __LINE__-1);
+				printf("//received WRITE: %s//\n",m.mtext);
+			}
+			
+			if(strcmp(name1, argv[1])==0)
+				printf("%s: %s", name2, msg_re);
+			else
+				printf("%s: %s", name1, msg_re);
+			
+			
+			if(strcmp(argv[1], name1)==0)
+			{
+				m.mtype=READ;
+				strcpy(m.mtext, "1");
+			
+				rv=msgsnd(msgid1, &m, strlen(m.mtext)+1, 0);
+				failcheck(rv, __LINE__-1);
+				printf("//send READ: %s//\n",m.mtext);
+			
+			}
+			else if(strcmp(argv[1], name2)==0)
+			{
+				m.mtype=READ;
+				strcpy(m.mtext, "1");
+			
+				rv=msgsnd(msgid2, &m, strlen(m.mtext)+1, 0);
+				failcheck(rv, __LINE__-1);
+				printf("//send READ: %s//\n",m.mtext);
 			}
 		}while(1);
 
 		_exit(0);
 	}
 	
-	if(strcmp(argv[1], name1)==0)
-	{
-		fd=open("pipe1", O_WRONLY);
-		failcheck(fd, __LINE__-1);
+	errno=0;
+		
+	if(strcmp(argv[1], name2)==0)
+	{	
+		msgid1=msgget(key, IPC_CREAT|IPC_EXCL|0666);
+	
+		if((errno!=EEXIST)&&(msgid1<0))
+			failcheck(msgid1, __LINE__-3);
+		if(errno==EEXIST)
+		{
+			msgid1=msgget(key, 0);
+			failcheck(msgid1, __LINE__-1);
+		}
 	}
-	else if(strcmp(argv[1], name2)==0)
+	else if(strcmp(argv[1], name1)==0)
 	{
-		fd=open("pipe2", O_WRONLY);
-		failcheck(fd, __LINE__-1);
+		msgid2=msgget(key, IPC_CREAT|IPC_EXCL|0666);
+	
+		if((errno!=EEXIST)&&(msgid2<0))
+			failcheck(msgid2, __LINE__-3);
+		if(errno==EEXIST)
+		{
+			msgid1=msgget(key, 0);
+			failcheck(msgid2, __LINE__-1);
+		}
 	}
-	printf("expecting to write\n");
+	
+	int flag=0;
+	
 	do
 	{	
-		
 		fgets(msg_wr, MSG_SIZE, stdin);
 		if(strcmp(msg_wr, "quit\n")==0)
 		{
-			rv=kill(pid, SIGTERM);
+			rv=kill(pid, SIGINT);
 			failcheck(rv, __LINE__-1);
 				
-			rv=waitpid(-1, NULL, 0);
+			rv=kill(getpid(), SIGINT);
 			failcheck(rv, __LINE__-1);
 				
-			rv=shmctl(shmid,  IPC_RMID, NULL);
-			failcheck(rv, __LINE__-1);
-			
-			rv=close(fd);
-			failcheck(rv, __LINE__-1);
-
-			break;
+				
+// 			rv=shmctl(shmid,  IPC_RMID, NULL);
+// 			failcheck(rv, __LINE__-1);
 		}
 		
-		if(errno==EPIPE)
-		{
-			rv=close(fd);
-			failcheck(rv, __LINE__-1);
+// 		rv=shmctl(shmid, IPC_STAT, &buf);
+// 		failcheck(rv, __LINE__-1);
+// 		
+// 		if((buf.shm_nattch==2)&&(flag==0))
+// 		{
+// 			if(strcmp(argv[1], name1)==0)
+// 			{
+// 				op.sem_num=0;
+// 				op.sem_op=-1;
+// 				op.sem_flg=0;
+// 			
+// 				semop(semid, &op, 1);
+// 				printf("increased sem0\n");
+// 			}
+// 			else if(strcmp(argv[1], name2)==0)
+// 			{
+// 				op.sem_num=1;
+// 				op.sem_op=-1;
+// 				op.sem_flg=0;
+// 			
+// 				semop(semid, &op, 1);
+// 			
+// 				printf("increased sem1\n");
+// 			}
+// 			flag=1;
+// 		}
+// 		if(buf.shm_nattch==4)
+// 		{
+// 			if(flag==1)
+// 			{
+// 				if(strcmp(argv[1], name1)==0)
+// 				{
+// 					op.sem_num=1;
+// 					op.sem_op=1;
+// 					op.sem_flg=0;
+// 			
+// 					semop(semid, &op, 1);
+// 					printf("increased sem0\n");
+// 				}
+// 				else if(strcmp(argv[1], name2)==0)
+// 				{
+// 					op.sem_num=0;
+// 					op.sem_op=1;
+// 					op.sem_flg=0;
+// 			
+// 					semop(semid, &op, 1);
+// 			
+// 					printf("increased sem1\n");
+// 				}
+// 				flag=2;
+// 			}
+			if(strcmp(argv[1], name2)==0)
+			{
+				m.mtype=WRITE;
+				strcpy(m.mtext, "1");
+				rv=msgsnd(msgid1, &m, strlen(m.mtext)+1, 0);
+				failcheck(rv, __LINE__-1);
+				printf("//send WRITE: %s//\n",m.mtext);
+			}
+			else if(strcmp(argv[1], name1)==0)
+			{
+				m.mtype=WRITE;
+				strcpy(m.mtext, "1");
+				rv=msgsnd(msgid2, &m, strlen(m.mtext)+1, 0);
+				failcheck(rv, __LINE__-1);
+				printf("//send WRITE: %s//\n",m.mtext);
+			}
 			
 			if(strcmp(argv[1], name1)==0)
 			{
-				fd=open("pipe1", O_WRONLY);
-				failcheck(fd, __LINE__-1);
+				rv=msgrcv(msgid2, &m, sizeof(m.mtext), READ, 0);
+				failcheck(rv, __LINE__-1);
+				printf("//received READ: %s//\n",m.mtext);
 			}
 			else if(strcmp(argv[1], name2)==0)
 			{
-				fd=open("pipe2", O_WRONLY);
-				failcheck(fd, __LINE__-1);
+				rv=msgrcv(msgid1, &m, sizeof(m.mtext), READ, 0);
+				failcheck(rv, __LINE__-1);
+				printf("//received READ: %s//\n",m.mtext);
 			}
-			errno=0;
-		}
-		else
-		{
-			temp=1;
-			rv=write(fd, &temp, sizeof(int));
-			failcheck(rv, __LINE__-1);
-		}
 	}while(1);
 	
 	return 0;

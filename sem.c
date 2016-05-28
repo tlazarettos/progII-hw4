@@ -28,7 +28,7 @@ void failcheck(int rv, int line)
 int main(int argc, char *argv[])
 {
 	key_t key;
-	int shmid, temp, semid;
+	int shmid, semid;
 	pid_t pid;
 	struct sembuf op;
 	struct shmid_ds buf;
@@ -118,18 +118,20 @@ int main(int argc, char *argv[])
 	}
 	
 	errno=0;
-	semid=semget(key, 4, IPC_CREAT|IPC_EXCL|0666);
+	semid=semget(key, 2, IPC_CREAT|IPC_EXCL|0666);
 	
 	if((errno!=EEXIST)&&(semid<0))
 		failcheck(semid, __LINE__-2);
 	if(errno==EEXIST)
 	{
-		semid=semget(key, 4, 0);
+		semid=semget(key, 2, 0);
 		failcheck(shmid, __LINE__-1);
 	}
 	else
 	{
-		rv=semctl(semid, 4, SETALL, 0);
+		rv=semctl(semid, 0, SETVAL, 0);
+		failcheck(rv, __LINE__-1);
+		rv=semctl(semid, 1, SETVAL, 0);
 		failcheck(rv, __LINE__-1);
 	}
 
@@ -167,17 +169,32 @@ int main(int argc, char *argv[])
 
 		_exit(0);
 	}
+	
 	int flag=0;
 	do
-	{
+	{	
+		fgets(msg_wr, MSG_SIZE, stdin);
+		if(strcmp(msg_wr, "quit\n")==0)
+		{
+			rv=kill(pid, SIGINT);
+			failcheck(rv, __LINE__-1);
+				
+			rv=kill(getpid(), SIGINT);
+			failcheck(rv, __LINE__-1);
+				
+				
+// 			rv=shmctl(shmid,  IPC_RMID, NULL);
+// 			failcheck(rv, __LINE__-1);
+		}
+		
 		rv=shmctl(shmid, IPC_STAT, &buf);
 		failcheck(rv, __LINE__-1);
 		
-		if(buf.shm_nattch==2)
+		if((buf.shm_nattch==2)&&(flag==0))
 		{
 			if(strcmp(argv[1], name1)==0)
 			{
-				op.sem_num=2;
+				op.sem_num=0;
 				op.sem_op=-1;
 				op.sem_flg=0;
 			
@@ -186,30 +203,8 @@ int main(int argc, char *argv[])
 			}
 			else if(strcmp(argv[1], name2)==0)
 			{
-				op.sem_num=3;
+				op.sem_num=1;
 				op.sem_op=-1;
-				op.sem_flg=0;
-			
-				semop(semid, &op, 1);
-			
-				printf("increased sem1\n");
-			}
-		}
-		if((buf.shm_nattch==4)&&(flag==0))
-		{
-			if(strcmp(argv[1], name2)==0)
-			{
-				op.sem_num=2;
-				op.sem_op=1;
-				op.sem_flg=0;
-			
-				semop(semid, &op, 1);
-				printf("increased sem0\n");
-			}
-			else if(strcmp(argv[1], name1)==0)
-			{
-				op.sem_num=3;
-				op.sem_op=1;
 				op.sem_flg=0;
 			
 				semop(semid, &op, 1);
@@ -218,40 +213,50 @@ int main(int argc, char *argv[])
 			}
 			flag=1;
 		}
-		
-		fgets(msg_wr, MSG_SIZE, stdin);
-		if(strcmp(msg_wr, "quit\n")==0)
+		if(buf.shm_nattch==4)
 		{
-			rv=kill(pid, SIGTERM);
-			failcheck(rv, __LINE__-1);
-				
-			rv=waitpid(-1, NULL, 0);
-			failcheck(rv, __LINE__-1);
-				
-			rv=shmctl(shmid,  IPC_RMID, NULL);
-			failcheck(rv, __LINE__-1);
-
-			break;
-		}
-		
-		if(strcmp(argv[1], name1)==0)
-		{
-			op.sem_num=0;
-			op.sem_op=1;
-			op.sem_flg=0;
+			if(flag==1)
+			{
+				if(strcmp(argv[1], name1)==0)
+				{
+					op.sem_num=1;
+					op.sem_op=1;
+					op.sem_flg=0;
 			
-			semop(semid, &op, 1);
-			printf("increased sem0\n");
-		}
-		else if(strcmp(argv[1], name2)==0)
-		{
-			op.sem_num=1;
-			op.sem_op=1;
-			op.sem_flg=0;
+					semop(semid, &op, 1);
+					printf("increased sem0\n");
+				}
+				else if(strcmp(argv[1], name2)==0)
+				{
+					op.sem_num=0;
+					op.sem_op=1;
+					op.sem_flg=0;
 			
-			semop(semid, &op, 1);
+					semop(semid, &op, 1);
 			
-			printf("increased sem1\n");
+					printf("increased sem1\n");
+				}
+				flag=2;
+			}
+			if(strcmp(argv[1], name1)==0)
+			{
+				op.sem_num=0;
+				op.sem_op=1;
+				op.sem_flg=0;
+			
+				semop(semid, &op, 1);
+				printf("increased sem0\n");
+			}
+			else if(strcmp(argv[1], name2)==0)
+			{
+				op.sem_num=1;
+				op.sem_op=1;
+				op.sem_flg=0;
+			
+				semop(semid, &op, 1);
+			
+				printf("increased sem1\n");
+			}
 		}
 	}while(1);
 	
